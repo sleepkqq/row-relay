@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Preserve the hash-verified upstream SQL verbatim, including its whitespace.
+internal/pgque/pgque.sql -text -whitespace

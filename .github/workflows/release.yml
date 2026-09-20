@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Verify version and code
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          make check
+      - name: Build and verify release image
+        run: |
+          make container-build
+          test "$(docker run --rm rowrelay:local --version)" = "row-relay $(cat VERSION)"
+          make lab-up
+          make integration
+          make integration-container
+      - name: Publish versioned image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          image="ghcr.io/sleepkqq/row-relay:$(cat VERSION)"
+          docker tag rowrelay:local "$image"
+          docker push "$image"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --title "RowRelay $(cat VERSION)" --notes "Protobuf CDC and prepared business outbox on PgQue. Container image — $IMAGE. See README and docs for setup and delivery guarantees."

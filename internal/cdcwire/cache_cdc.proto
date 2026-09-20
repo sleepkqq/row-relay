@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package cdc;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/sleepkqq/row-relay/internal/cdcwire";
+option java_multiple_files = true;
+option java_package = "io.github.sleepkqq.rowrelay.cdc";
+
+// First message in this file: Confluent Protobuf message-index path [0].
+message CacheCdcRecord {
+  uint32 version = 1;
+  string source_epoch = 2;
+  oneof body {
+    RowChange change = 3;
+    ClosedBoundary boundary = 4;
+  }
+}
+
+message RowChange {
+  int64 event_id = 1;
+  string schema = 2;
+  string table = 3;
+  Operation operation = 4;
+  RowImage before = 5;
+  RowImage after = 6;
+
+  enum Operation {
+    OPERATION_UNSPECIFIED = 0;
+    OPERATION_INSERT = 1;
+    OPERATION_UPDATE = 2;
+    OPERATION_DELETE = 3;
+  }
+}
+
+message ClosedBoundary {
+  google.protobuf.Timestamp committed_before = 1;
+  Mode mode = 2;
+
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_FENCED = 1;
+    MODE_MANAGED_INVALIDATION = 2;
+  }
+}
+
+// Full OLD/NEW column maps; also represents nested object values.
+message RowImage {
+  map<string, ColumnValue> fields = 1;
+}
+
+// SQL NULL is present null_value; a missing column has no map entry.
+// Unlike google.protobuf.Value, numbers never pass through a double.
+message ColumnValue {
+  oneof kind {
+    google.protobuf.NullValue null_value = 1;
+    bool bool_value = 2;
+    string string_value = 3;
+    string number_text = 4;
+    RowImage object_value = 5;
+    ValueList array_value = 6;
+  }
+}
+
+message ValueList {
+  repeated ColumnValue values = 1;
+}

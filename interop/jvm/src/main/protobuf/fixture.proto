@@ -1,0 +1,21 @@
+syntax = "proto3";
+package rowrelay.fixture;
+option java_outer_classname = "Fixture";
+
+// A typed fixture, not JSON wrapped in protobuf. Absence of owner_id is SQL NULL;
+// absence of an image distinguishes INSERT/DELETE from a present full row.
+message Image {
+  int64 id = 1;
+  optional int64 owner_id = 2;
+  string amount = 3; // Exact arbitrary-precision decimal, never a floating point approximation.
+  string label = 4;
+  bytes binary = 5;
+}
+
+message Change {
+  enum Operation { UNSPECIFIED = 0; INSERT = 1; UPDATE = 2; DELETE = 3; }
+  string event_id = 1;
+  Operation operation = 2;
+  Image before = 3;
+  Image after = 4;
+}

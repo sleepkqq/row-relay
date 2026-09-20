@@ -1,0 +1,11 @@
+{
+  "name": "rowrelay-pgboss-baseline",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "dependencies": {
+    "kafkajs": "2.2.4",
+    "pg": "8.23.0",
+    "pg-boss": "12.33.2"
+  }
+}

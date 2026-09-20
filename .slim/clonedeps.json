@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "dependencies": [
+    {
+      "name": "PgQue",
+      "resolvedVersion": "v0.2.0",
+      "repoUrl": "https://github.com/NikolayS/PgQue.git",
+      "ref": "e8ee488d2c1d87ab09eed2581ec4bbc1e68315f6",
+      "path": ".slim/clonedeps/NikolayS__PgQue",
+      "packagePath": "sql/pgque.sql",
+      "reason": "Audit and benchmark the upstream MVCC queue without rewriting its snapshot/rotation engine"
+    }
+  ]
+}

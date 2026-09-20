@@ -1,0 +1,45 @@
+# Disposable three-node fault lab. Do not switch profiles during a benchmark.
+x-quorum-environment: &quorum-environment
+  CLUSTER_ID: cm93cmVsYXktcXVvcnVtMQ
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,INTERNAL://:9094
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093,3@kafka3:9093
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+  KAFKA_LOG_RETENTION_HOURS: 6
+  KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+
+x-quorum-node: &quorum-node
+  image: apache/kafka-native:4.3.0@sha256:169febaaa11b212435605b25f0654bd5aa6c07ed09d9efd61ae40c52d514c3a7
+  mem_limit: 768m
+  cpus: 2
+
+services:
+  kafka:
+    environment:
+      <<: *quorum-environment
+      KAFKA_NODE_ID: 1
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:29092,INTERNAL://kafka:9094
+  kafka2:
+    <<: *quorum-node
+    ports:
+      - 127.0.0.1:29093:9092
+    environment:
+      <<: *quorum-environment
+      KAFKA_NODE_ID: 2
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:29093,INTERNAL://kafka2:9094
+  kafka3:
+    <<: *quorum-node
+    ports:
+      - 127.0.0.1:29094:9092
+    environment:
+      <<: *quorum-environment
+      KAFKA_NODE_ID: 3
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:29094,INTERNAL://kafka3:9094

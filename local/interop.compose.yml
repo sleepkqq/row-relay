@@ -1,0 +1,10 @@
+services:
+  registry:
+    image: quay.io/apicurio/apicurio-registry:3.3.3@sha256:c9cae4c90ce46538abf673c68eb591345f23bcc6c2aa6bfd47189adcf609d8f1
+    mem_limit: 512m
+    cpus: 1
+    environment:
+      JAVA_OPTS_APPEND: -Xms64m -Xmx256m
+    ports:
+      - 127.0.0.1:28080:8080
+    # Default embedded H2 is deliberately ephemeral and local to this fixture.
