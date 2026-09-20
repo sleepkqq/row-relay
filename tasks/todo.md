@@ -127,9 +127,12 @@ still need work; managed-provider installation rights remain unverified.
   transfer after active-pod deletion and unchanged post-takeover delivery.
 
 Typed Go CDC now passes the real Apicurio/JVM contract test and local downstream
-application-cache acceptance. Released application dependencies and dev schema
-registration are complete. Dev CDC application activation and full HA certification
-remain pending. The 1.0.0 release includes a versioned container, bundled unmodified
+application-cache acceptance. Released dependencies, dev schema registration and
+native application activation are complete. Live acceptance covered all nine capture
+tables, six Ready application replicas, cross-replica invalidation after an external
+SQL change, and business outbox replay without duplicate effects. Full HA certification
+and controlled format comparisons remain pending. The 1.0.0 release includes a
+versioned container, bundled unmodified
 PgQue installer and tag-triggered verification/publication. Image
 `ghcr.io/sleepkqq/row-relay:1.0.0` is published and anonymously pullable. P0's historical verification
 below predates the implementation.
