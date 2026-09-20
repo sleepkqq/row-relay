@@ -1,0 +1,24 @@
+name: Retire superseded images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Remove untagged RowRelay container versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          endpoint="/users/${GITHUB_REPOSITORY_OWNER}/packages/container/row-relay/versions"
+          gh api --paginate "$endpoint" --jq '.[] | select(.metadata.container.tags | length == 0) | .id' > versions.txt
+          while read -r id; do
+            gh api --method DELETE "$endpoint/$id"
+          done < versions.txt

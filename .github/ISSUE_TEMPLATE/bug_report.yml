@@ -1,0 +1,37 @@
+name: Bug report
+description: Report a reproducible capture, delivery, recovery or tooling problem.
+title: "[Bug]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include versions and the relevant delivery configuration. Redact connection strings and credentials.
+      placeholder: |
+        RowRelay version / image tag:
+        PostgreSQL and Kafka versions:
+        CDC or business outbox:
+        Delivery mode (fenced / managed):
+        Consumer isolation / deduplication:
+        OS / container runtime:
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal steps, SQL or configuration using synthetic records. Include failure/restart timing if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs and delivery evidence
+      description: Redacted logs, source ACK state, consumer observations or test output. Do not include real row payloads or secrets.

@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose an integration, workflow improvement or missing capability.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What problem would this solve?
+      description: Describe your use case and the current limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the expected outcome and any impact on delivery or consumer guarantees.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and context
+      description: Existing workarounds, relevant integrations or a way to verify the improvement.

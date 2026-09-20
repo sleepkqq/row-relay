@@ -13,8 +13,10 @@ criteria live in [plan.md](plan.md); stable requirements live in
 - [x] Record prior art, correctness matrix, and controlled benchmark program.
 - [x] Define ordered milestones and contribution/agent instructions.
 - [x] Complete local bootstrap verification and documentation-link check.
+- [x] Refresh the open-source landing page, visual identity, documentation index
+  and contributor/issue/PR guidance for the released CDC and outbox capabilities.
 - [x] Run the workflow on GitHub after the authorized push: CI and the
-  [1.0.0 release](https://github.com/sleepkqq/row-relay/actions/workflows/release.yml) pass.
+  [release workflow](https://github.com/sleepkqq/row-relay/actions/workflows/release.yml) pass.
 
 ## P1 — Durable JSON slice
 
