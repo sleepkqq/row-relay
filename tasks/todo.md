@@ -13,7 +13,8 @@ criteria live in [plan.md](plan.md); stable requirements live in
 - [x] Record prior art, correctness matrix, and controlled benchmark program.
 - [x] Define ordered milestones and contribution/agent instructions.
 - [x] Complete local bootstrap verification and documentation-link check.
-- [ ] Run the workflow on GitHub after an explicitly requested push.
+- [x] Run the workflow on GitHub after the authorized push: CI and the
+  [1.0.0 release](https://github.com/sleepkqq/row-relay/actions/workflows/release.yml) pass.
 
 ## P1 — Durable JSON slice
 
@@ -129,7 +130,8 @@ Typed Go CDC now passes the real Apicurio/JVM contract test and local downstream
 application-cache acceptance. Released application dependencies and dev schema
 registration are complete. Dev CDC application activation and full HA certification
 remain pending. The 1.0.0 release includes a versioned container, bundled unmodified
-PgQue installer and tag-triggered verification/publication. P0's historical verification
+PgQue installer and tag-triggered verification/publication. Image
+`ghcr.io/sleepkqq/row-relay:1.0.0` is published and anonymously pullable. P0's historical verification
 below predates the implementation.
 
 Local bootstrap verification (2026-09-19): `make check` passed on
