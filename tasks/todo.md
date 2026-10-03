@@ -131,7 +131,7 @@ still need work; managed-provider installation rights remain unverified.
   existing 1..16 stream / 32 MiB aggregate limits for the 1.1.0 release.
 - [x] Verify `make check`, `make integration` and `make integration-container`
   for 1.1.0, including the real long-drain readiness/ACK regression.
-- [ ] Publish and verify the tag-triggered 1.1.0 release.
+- [x] Publish and verify the tag-triggered 1.1.0 release.
 
 Typed Go CDC now passes the real Apicurio/JVM contract test and local downstream
 application-cache acceptance. Released dependencies, dev schema registration and
@@ -148,7 +148,12 @@ Version 1.1.0 passes local `make check`, integration and packaged-container gate
 including the long-drain readiness/ACK regression. It adds offline `--check-config`
 validation, structured bounded diagnostics and drain-aware operational readiness;
 the existing stream limits, wire protocol and delivery guarantees are unchanged.
-Tag-triggered publication remains pending; the 1.0.0 evidence above is unchanged.
+The [1.1.0 release](https://github.com/sleepkqq/row-relay/releases/tag/v1.1.0)
+and [tag-triggered verification](https://github.com/sleepkqq/row-relay/actions/runs/37160688861)
+are complete. The published image is anonymously pullable; its version and the
+13-stream offline configuration check also pass with networking disabled.
+Image digest: `sha256:65be71c82599913e5bfa55a92673a05b504bf7c874137143ecb99fbb0af28675`.
+The 1.0.0 evidence above is unchanged.
 
 Local bootstrap verification (2026-09-19): `make check` passed on
 `go1.27.0-X:nodwarf5 linux/amd64`; Go reports no test files yet. CLI smoke checks
