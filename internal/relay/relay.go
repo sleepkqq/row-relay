@@ -168,7 +168,7 @@ func Open(ctx context.Context, c Config) (*Runner, error) {
 	}
 	db, err := pgx.Connect(ctx, c.DatabaseURL)
 	if err != nil {
-		return nil, errors.New("connect source failed")
+		return nil, wrapOperation(opSourceConnect, errors.New("connect source failed"))
 	}
 	r := &Runner{config: c, db: db, queue: "rowrelay"}
 	ok := false
@@ -185,7 +185,7 @@ func Open(ctx context.Context, c Config) (*Runner, error) {
 		lockArgs = []any{"rowrelay_outbox:" + c.OutboxStream}
 	}
 	if err = db.QueryRow(ctx, lockQuery, lockArgs...).Scan(&r.lockID, &locked); err != nil {
-		return nil, errors.New("source ownership check failed")
+		return nil, wrapOperation(opSourceOwnership, errors.New("source ownership check failed"))
 	}
 	if !locked {
 		return nil, ErrOwnershipUnavailable
@@ -197,7 +197,7 @@ func Open(ctx context.Context, c Config) (*Runner, error) {
 		idleLimit = "0"
 	}
 	if _, err = db.Exec(ctx, "SELECT set_config('idle_session_timeout',$1,false),set_config('idle_in_transaction_session_timeout',$1,false)", idleLimit); err != nil {
-		return nil, errors.New("configure source ownership timeout failed")
+		return nil, wrapOperation(opSourceSession, errors.New("configure source ownership timeout failed"))
 	}
 	var mode string
 	if c.OutboxStream == "" {
@@ -206,37 +206,37 @@ func Open(ctx context.Context, c Config) (*Runner, error) {
 		var topic string
 		err = db.QueryRow(ctx, "SELECT epoch::text,queue_mode,topic FROM rowrelay_outbox.stream WHERE name=$1", c.OutboxStream).Scan(&r.epoch, &mode, &topic)
 		if err == nil && topic != c.Topic {
-			return nil, errors.New("outbox topic does not match registered route")
+			return nil, wrapOperation(opSourceRegistration, errors.New("outbox topic does not match registered route"))
 		}
 		r.queue = "rowrelay_outbox." + r.epoch
 	}
 	if err != nil || mode != "pgque" {
-		return nil, errors.New("source is not a supported PgQue installation")
+		return nil, wrapOperation(opSourceRegistration, errors.New("source is not a supported PgQue installation"))
 	}
 	if c.OutboxStream == "" && c.CDCFormat != "legacy-json" {
 		r.schemaIDs, err = cdcwire.Lookup(ctx, c.SchemaRegistryURL, c.topics())
 		if err != nil {
-			return nil, err
+			return nil, wrapOperation(opRegistryLookup, err)
 		}
 	}
 	r.kafka, err = newProducer(c, "rowrelay-"+r.epoch)
 	if err != nil {
-		return nil, err
+		return nil, wrapOperation(opProducerInit, err)
 	}
 	topics, err := kadm.NewClient(r.kafka).ListTopics(ctx, c.topics()...)
 	if err != nil {
-		return nil, errors.New("output topic metadata unavailable")
+		return nil, wrapOperation(opTopicMetadata, errors.New("output topic metadata unavailable"))
 	}
 	for _, topic := range c.topics() {
 		if len(topics[topic].Partitions) == 0 || topics[topic].Err != nil ||
 			(c.OutboxStream == "" && len(topics[topic].Partitions) != 1) {
-			return nil, errors.New("output topic must exist; CDC requires exactly one partition")
+			return nil, wrapOperation(opTopicMetadata, errors.New("output topic must exist; CDC requires exactly one partition"))
 		}
 	}
 	// Initialize idempotence under source ownership. Only a transactional ID
 	// also fences the previous producer and aborts its unfinished transaction.
 	if _, _, err = r.kafka.ProducerID(ctx); err != nil {
-		return nil, errors.New("initialize Kafka producer failed")
+		return nil, wrapOperation(opProducerInit, errors.New("initialize Kafka producer failed"))
 	}
 	ok = true
 	return r, nil
@@ -280,12 +280,22 @@ func (r *Runner) Close() {
 // Step ACKs the entire snapshot batch only after all Kafka chunks are acknowledged
 // (and committed in fenced mode). Managed-mode fragments are immediately visible.
 // There is no per-event acknowledgement inside a PgQue snapshot batch.
-func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error) {
+func (r *Runner) Step(ctx context.Context) (int, bool, error) {
+	return r.step(ctx, nil)
+}
+
+func (r *Runner) step(ctx context.Context, onActivity func()) (count int, advanced bool, err error) {
 	if r.failed {
 		return 0, false, errors.New("publisher failed; reopen under source ownership")
 	}
 	ctx, activity, finish := idleContext(ctx, r.config.Timeout)
 	defer finish()
+	if onActivity != nil {
+		// A real operation renews both the bounded idle timeout and the caller's
+		// synchronously reported activity at the same sites.
+		renew := activity
+		activity = func() { renew(); onActivity() }
+	}
 	defer func() {
 		if err != nil {
 			if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
@@ -298,7 +308,7 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 	var boundary time.Time
 	progressDue := r.progressDue()
 	if err = r.db.QueryRow(ctx, "SELECT pgque.next_batch($1, 'rowrelay')", r.queue).Scan(&batchID); err != nil || batchID == nil {
-		return 0, false, err
+		return 0, false, wrapOperation(opSourceFetch, err)
 	}
 	activity()
 	if progressDue {
@@ -306,7 +316,7 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 		// snapshot boundary only after EVERY record in this batch is delivered.
 		if err = r.db.QueryRow(ctx, `SELECT b.batch_end FROM pgque.get_batch_info($1) b
 			JOIN pgque.queue q ON q.queue_name=b.queue_name WHERE NOT q.queue_external_ticker`, *batchID).Scan(&boundary); err != nil {
-			return 0, false, err
+			return 0, false, wrapOperation(opSourceFetch, err)
 		}
 		activity()
 	}
@@ -314,21 +324,21 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 	// returns only a prefix but whose ack finishes the WHOLE snapshot batch.
 	var sql string
 	if err = r.db.QueryRow(ctx, "SELECT pgque.batch_event_sql($1)", *batchID).Scan(&sql); err != nil {
-		return 0, false, err
+		return 0, false, wrapOperation(opSourceFetch, err)
 	}
 	activity()
 	// Bound cursor fetches by both count and source bytes. A closed FETCH lets us
 	// refresh the actual ownership session between slow Kafka chunks.
 	var maxBytes int64
 	if err = r.db.QueryRow(ctx, "SELECT coalesce(max(octet_length(ev_data)),0) FROM ("+sql+") AS events", pgx.QueryExecModeExec).Scan(&maxBytes); err != nil {
-		return 0, false, err
+		return 0, false, wrapOperation(opSourceFetch, err)
 	}
 	activity()
 	// ponytail: a single large row reduces every fetch; size-aware paging if measured throughput requires it.
 	fetchCount := min(int64(r.config.Batch), max(int64(1), int64(r.config.BatchBytes)/max(int64(1), maxBytes)))
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return 0, false, err
+		return 0, false, wrapOperation(opSourceFetch, err)
 	}
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -336,7 +346,7 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 		_ = tx.Rollback(cleanup)
 	}()
 	if _, err = tx.Exec(ctx, "DECLARE rowrelay_batch NO SCROLL CURSOR FOR SELECT ev_id,ev_data FROM ("+sql+") AS events ORDER BY ev_id", pgx.QueryExecModeExec); err != nil {
-		return 0, false, err
+		return 0, false, wrapOperation(opSourceFetch, err)
 	}
 	activity()
 	records := make([]*kgo.Record, 0, r.config.Batch)
@@ -346,11 +356,11 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 			return nil
 		}
 		if _, err := tx.Exec(ctx, "SELECT 1"); err != nil {
-			return err
+			return wrapOperation(opSourceFetch, err)
 		}
 		activity()
 		if err := r.publish(ctx, records); err != nil {
-			return err
+			return wrapOperation(opKafkaPublish, err)
 		}
 		activity()
 		clear(records)
@@ -364,7 +374,7 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 	for {
 		rows, readErr := tx.Query(ctx, "FETCH FORWARD "+strconv.FormatInt(fetchCount, 10)+" FROM rowrelay_batch", pgx.QueryExecModeExec)
 		if readErr != nil {
-			return 0, false, readErr
+			return 0, false, wrapOperation(opSourceFetch, readErr)
 		}
 		events, readErr := pgx.CollectRows(rows, func(row pgx.CollectableRow) (sourceEvent, error) {
 			var event sourceEvent
@@ -372,7 +382,7 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 			return event, err
 		})
 		if readErr != nil {
-			return 0, false, readErr
+			return 0, false, wrapOperation(opSourceFetch, readErr)
 		}
 		activity()
 		if len(events) == 0 {
@@ -389,13 +399,13 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 			if r.config.OutboxStream == "" {
 				change, decodeErr := decodeChange(raw)
 				if decodeErr != nil {
-					return 0, false, decodeErr
+					return 0, false, wrapOperation(opSourceDecode, decodeErr)
 				}
 				topic := r.config.Topic
 				if len(r.config.SchemaTopics) > 0 {
 					topic = r.config.SchemaTopics[change.Schema]
 					if topic == "" {
-						return 0, false, errors.New("captured schema has no configured route")
+						return 0, false, wrapOperation(opRecordEncode, errors.New("captured schema has no configured route"))
 					}
 				}
 				var value []byte
@@ -412,14 +422,14 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 				}
 			}
 			if err != nil {
-				return 0, false, err
+				return 0, false, wrapOperation(opRecordEncode, err)
 			}
 			size := len(record.Key) + len(record.Value)
 			for _, header := range record.Headers {
 				size += len(header.Key) + len(header.Value) + 10
 			}
 			if size > (1<<20)-1024 {
-				return 0, false, errors.New("encoded record exceeds Kafka byte limit")
+				return 0, false, wrapOperation(opRecordOversize, errors.New("encoded record exceeds Kafka byte limit"))
 			}
 			if len(records) == r.config.Batch || buffered+size > r.config.BatchBytes {
 				if err = flush(); err != nil {
@@ -438,8 +448,10 @@ func (r *Runner) Step(ctx context.Context) (count int, advanced bool, err error)
 		return 0, false, err
 	}
 	activity()
-	err = r.acknowledge(ctx, *batchID)
-	if err == nil && progressDue {
+	if err = r.acknowledge(ctx, *batchID); err != nil {
+		return count, true, wrapOperation(opSourceAck, err)
+	}
+	if progressDue {
 		activity()
 		err = r.publishProgress(ctx, boundary)
 	}
@@ -455,6 +467,15 @@ func (r *Runner) Run(ctx context.Context) error {
 // RunObserved reports completed source steps, including idle reads. This is an
 // operability signal only; it must not be used as a CDC freshness checkpoint.
 func (r *Runner) RunObserved(ctx context.Context, completed func()) error {
+	return r.RunObservedActivity(ctx, completed, nil)
+}
+
+// RunObservedActivity additionally reports real in-flight source activity at the
+// same bounded sites that renew the operation idle timeout. activity is called
+// synchronously and never replaces completed; it is an operability signal, not a
+// freshness proof and not a liveness guarantee on its own. A long healthy batch
+// drain keeps both the operation and the observed activity alive.
+func (r *Runner) RunObservedActivity(ctx context.Context, completed, activity func()) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	maintenance := make(chan error, 1)
@@ -465,7 +486,7 @@ func (r *Runner) RunObserved(ctx context.Context, completed func()) error {
 	}()
 	var runErr error
 	for ctx.Err() == nil {
-		_, advanced, err := r.Step(ctx)
+		_, advanced, err := r.step(ctx, activity)
 		if err != nil {
 			runErr = err
 			break

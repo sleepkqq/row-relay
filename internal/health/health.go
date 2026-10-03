@@ -49,6 +49,18 @@ func (h *Health) mark(name, phase string) {
 	}
 }
 
+// Activity refreshes the last-contact time of a worker that is already active
+// or standby, so a long healthy operation is not reported stalled. It never
+// changes a phase and never revives starting, failed, or stopped workers.
+func (h *Health) Activity(name string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if w, ok := h.workers[name]; ok && !h.stopping && (w.phase == "active" || w.phase == "standby") {
+		w.last = time.Now()
+		h.workers[name] = w
+	}
+}
+
 func (h *Health) Fail(name string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

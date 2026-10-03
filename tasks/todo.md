@@ -127,6 +127,11 @@ still need work; managed-provider installation rights remain unverified.
 - [x] Deploy the managed outbox pilot to the intended dev broker using existing
   credentials and topic permissions; verify two Ready replicas, source ownership
   transfer after active-pod deletion and unchanged post-takeover delivery.
+- [x] Document offline `--check-config` validation, bounded diagnostics and the
+  existing 1..16 stream / 32 MiB aggregate limits for the 1.1.0 release.
+- [x] Verify `make check`, `make integration` and `make integration-container`
+  for 1.1.0, including the real long-drain readiness/ACK regression.
+- [ ] Publish and verify the tag-triggered 1.1.0 release.
 
 Typed Go CDC now passes the real Apicurio/JVM contract test and local downstream
 application-cache acceptance. Released dependencies, dev schema registration and
@@ -138,6 +143,12 @@ versioned container, bundled unmodified
 PgQue installer and tag-triggered verification/publication. Image
 `ghcr.io/sleepkqq/row-relay:1.0.0` is published and anonymously pullable. P0's historical verification
 below predates the implementation.
+
+Version 1.1.0 passes local `make check`, integration and packaged-container gates,
+including the long-drain readiness/ACK regression. It adds offline `--check-config`
+validation, structured bounded diagnostics and drain-aware operational readiness;
+the existing stream limits, wire protocol and delivery guarantees are unchanged.
+Tag-triggered publication remains pending; the 1.0.0 evidence above is unchanged.
 
 Local bootstrap verification (2026-09-19): `make check` passed on
 `go1.27.0-X:nodwarf5 linux/amd64`; Go reports no test files yet. CLI smoke checks

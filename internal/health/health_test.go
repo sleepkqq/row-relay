@@ -48,6 +48,48 @@ func TestReadinessRequiresEveryWorkerAndExpiresWithoutProgress(t *testing.T) {
 	check("/live", 200)
 }
 
+func TestActivityRenewsOnlyLiveWorkersAndNeverRevives(t *testing.T) {
+	h := New(map[string]time.Duration{"source": time.Second})
+	// A starting worker is never revived by activity.
+	h.Activity("source")
+	if s := h.snapshot(time.Now()); s.Ready || s.Streams["source"] != "starting" {
+		t.Fatalf("activity revived a starting worker: %+v", s)
+	}
+	// An active worker is renewed by activity.
+	h.Success("source")
+	h.Activity("source")
+	if s := h.snapshot(time.Now().Add(900 * time.Millisecond)); !s.Ready || s.Streams["source"] != "active" {
+		t.Fatalf("activity did not renew an active worker: %+v", s)
+	}
+	// Without further activity the same worker stalls.
+	if s := h.snapshot(time.Now().Add(3 * time.Second)); s.Ready || s.Streams["source"] != "stalled" {
+		t.Fatalf("stalled worker stayed ready without activity: %+v", s)
+	}
+	// A standby contender is renewed by activity.
+	h.Standby("source")
+	h.Activity("source")
+	if s := h.snapshot(time.Now().Add(900 * time.Millisecond)); !s.Ready || s.Streams["source"] != "standby" {
+		t.Fatalf("activity did not renew a standby worker: %+v", s)
+	}
+	// A failed worker is never revived by activity.
+	h.Fail("source")
+	h.Activity("source")
+	if s := h.snapshot(time.Now()); s.Ready || s.Streams["source"] != "failed" {
+		t.Fatalf("activity revived a failed worker: %+v", s)
+	}
+	// Stopping freezes renewal without changing the remembered phase.
+	h.Success("source")
+	last := h.workers["source"].last
+	h.Stop()
+	h.Activity("source")
+	if got := h.workers["source"].last; !got.Equal(last) {
+		t.Fatal("activity renewed a stopped worker")
+	}
+	if s := h.snapshot(time.Now()); s.Ready || !s.Stopping {
+		t.Fatalf("stopped worker reported ready: %+v", s)
+	}
+}
+
 func TestProbeServerClosesOnCancellation(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

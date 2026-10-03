@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -100,7 +101,7 @@ func LoadStreams(reader io.Reader, base Config, lookup func(string) (string, boo
 		streams = append(streams, Stream{Name: source.Name, Config: c})
 	}
 	if totalBytes > 32<<20 {
-		return nil, errors.New("sum of stream batch byte budgets exceeds 32 MiB")
+		return nil, fmt.Errorf("stream batch byte budgets total %d MiB (%d bytes); maximum is 32 MiB", totalBytes>>20, totalBytes)
 	}
 	return streams, nil
 }
@@ -111,6 +112,14 @@ func LoadStreams(reader io.Reader, base Config, lookup func(string) (string, boo
 // never source freshness.
 // Only fenced mode supports a paused predecessor resuming after takeover.
 func RunStreams(ctx context.Context, streams []Stream, report func(string, error)) error {
+	return RunStreamsActivity(ctx, streams, report, nil)
+}
+
+// RunStreamsActivity additionally reports real per-stream source activity to a
+// callback serialized with report by the same mutex. activity is an operability
+// signal only; it is never a freshness proof and a stream never advances its
+// source because of it.
+func RunStreamsActivity(ctx context.Context, streams []Stream, report func(string, error), activity func(string)) error {
 	if len(streams) == 0 || len(streams) > 16 {
 		return errors.New("invalid stream count")
 	}
@@ -140,6 +149,13 @@ func RunStreams(ctx context.Context, streams []Stream, report func(string, error
 			report(name, err)
 		}
 	}
+	touch := func(name string) {
+		if activity != nil {
+			reports.Lock()
+			defer reports.Unlock()
+			activity(name)
+		}
+	}
 	for _, stream := range streams {
 		workers.Go(func() {
 			backoff := time.Second
@@ -149,7 +165,7 @@ func RunStreams(ctx context.Context, streams []Stream, report func(string, error
 				runner, err := Open(openCtx, stream.Config)
 				cancel()
 				if err == nil {
-					err = runner.RunObserved(ctx, func() { notify(stream.Name, nil) })
+					err = runner.RunObservedActivity(ctx, func() { notify(stream.Name, nil) }, func() { touch(stream.Name) })
 					if ctx.Err() == nil {
 						notify(stream.Name, err)
 					}

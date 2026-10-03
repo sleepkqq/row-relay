@@ -78,7 +78,7 @@ and can run side by side in one process.
 ### Run the released container
 
 ```sh
-docker run --rm ghcr.io/sleepkqq/row-relay:1.0.0 --version
+docker run --rm ghcr.io/sleepkqq/row-relay:1.1.0 --version
 ```
 
 The image contains the relay, CA roots and the unmodified **PgQue 0.2.0** installer.
@@ -94,10 +94,10 @@ For secured brokers, also pass the [Kafka TLS/SCRAM environment variables](docs/
 
 ```sh
 docker run --rm -e DATABASE_URL \
-  ghcr.io/sleepkqq/row-relay:1.0.0 --install-pgque
+  ghcr.io/sleepkqq/row-relay:1.1.0 --install-pgque
 
 docker run --rm -e DATABASE_URL \
-  ghcr.io/sleepkqq/row-relay:1.0.0 \
+  ghcr.io/sleepkqq/row-relay:1.1.0 \
   --install --outbox-stream orders --topic orders.events
 ```
 
@@ -127,7 +127,7 @@ COMMIT;
 
 ```sh
 docker run --rm -e DATABASE_URL -e KAFKA_BROKERS \
-  ghcr.io/sleepkqq/row-relay:1.0.0 \
+  ghcr.io/sleepkqq/row-relay:1.1.0 \
   --outbox-stream orders --topic orders.events
 ```
 
@@ -142,7 +142,7 @@ After installing PgQue, initialize capture on your existing tables:
 
 ```sh
 docker run --rm -e DATABASE_URL \
-  ghcr.io/sleepkqq/row-relay:1.0.0 --install --tables public.orders
+  ghcr.io/sleepkqq/row-relay:1.1.0 --install --tables public.orders
 ```
 
 Create a **single-partition** CDC topic, register the
@@ -152,7 +152,7 @@ Confluent-compatible `/apis/ccompat/v7` endpoint. Start with the publisher conne
 
 ```sh
 docker run --rm -e DATABASE_URL -e KAFKA_BROKERS -e SCHEMA_REGISTRY_URL \
-  ghcr.io/sleepkqq/row-relay:1.0.0 --topic orders.cdc
+  ghcr.io/sleepkqq/row-relay:1.1.0 --topic orders.cdc
 ```
 
 Typed Protobuf is the default. Schema lookup is explicit; startup never registers
@@ -175,9 +175,15 @@ documents its workload, versions, durability settings and limitations.
 
 ## Current scope
 
-**Version 1.0.0 is released.** CDC, prepared outboxes, source-level takeover and
-Go/JVM wire compatibility are implemented and tested. Production hardening and
-broader deployment acceptance remain tracked in the [roadmap](tasks/todo.md).
+**Version 1.1.0 adds offline configuration validation and operational
+diagnostics.** `--check-config` validates the effective configuration without
+connecting to PostgreSQL, Kafka or the schema registry; timestamped startup,
+retry, recovery and shutdown logs stay credential- and row-free; and readiness
+follows real operation progress during long drains without certifying source
+freshness. The 1.0.0 release established CDC, prepared outboxes, source-level
+takeover and Go/JVM wire compatibility, which remain implemented and tested.
+Production hardening and broader deployment acceptance remain tracked in the
+[roadmap](tasks/todo.md).
 
 - Delivery is **at-least-once**, not end-to-end exactly-once. Kafka ACK does not
   mean the consumer has applied the event.

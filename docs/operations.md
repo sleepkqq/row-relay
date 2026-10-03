@@ -22,6 +22,32 @@ The caller must own those tables and have schema usage/function execution rights
 the capture trigger itself enqueues with its trusted installation owner's rights.
 Keep the source epoch across redeployments and give its expected value to consumers.
 
+## Offline configuration validation
+
+`--check-config` validates the effective configuration and exits without
+connecting to PostgreSQL, Kafka, or the schema registry, without starting an
+installer, and without opening the probe listener or any worker goroutine. It
+reads only the explicit `--config` file, if given. Required configuration is
+still checked: a single-source run needs its `DATABASE_URL`, broker and, for CDC
+Protobuf, `SCHEMA_REGISTRY_URL` environment; a multi-stream run resolves every
+`database_env` reference and applies the same strict route validation as
+startup, so each referenced variable must be present. A missing or invalid value
+fails with a safe message, and no source, broker or registry connection is
+attempted. On success it prints one bounded summary line (version, stream count,
+summed byte budget, delivery mode, poll and timeout) and never prints DSNs,
+credentials, or row data.
+
+## Stream limits
+
+A multi-stream configuration holds 1..16 streams, and the sum of their
+`batch_bytes` budgets must not exceed 32 MiB. Each route's `batch_bytes` is
+1..64 MiB and defaults to 4 MiB, so eight default routes already reach the
+32 MiB aggregate bound. Within the stream cap, more streams require a smaller
+per-route `batch_bytes`: 13 streams at `--batch-bytes 2097152` (2 MiB each) sum
+to 26 MiB and are accepted, while 19 streams exceed the 16-stream cap and, at
+that size, would also sum to 38 MiB, so they must be split across process
+configurations. The bounds are intentional and are not raised in place.
+
 ## Kafka transport
 
 | Environment variable | Meaning |
@@ -86,6 +112,17 @@ visibility frontier, or certify that application effects have been applied.
 Those guarantees require the [progress-barrier/consumer protocol](progress.md)
 and a conforming application adapter.
 
+Healthy long drains stay operational: real worker activity (completed operations
+and chunk progress) refreshes readiness while a stream is genuinely making
+progress, so a large snapshot drain does not appear stalled between step
+boundaries. Activity renews only a worker that is already active or standby; a
+worker still has to complete its first successful step to become ready, and
+healthy empty polls keep it ready. This is liveness only. It does not advance the
+source ACK boundary and does not certify a CDC closed boundary, consumer
+position, or freshness; `freshness_certified` remains false. Readiness fails for
+failed or stopped workers and for any worker without operation progress before
+its deadline.
+
 Probe responses exclude DSNs, passwords, row bytes, and raw error messages. The
 listener uses bounded HTTP header/read/write timeouts; it does not serve events
 or offer administrative mutation endpoints.
@@ -130,6 +167,18 @@ Use `schema_topics` for multiple schemas sharing one source database; omit `topi
 and `outbox_stream` on that route. It supports ready standbys without broker fencing,
 but never generic row materialization. Read the complete
 [managed invalidation contract](progress.md#managed-invalidation-only-profile).
+
+## Diagnostics
+
+Startup and lifecycle messages are timestamped and structured. Startup records
+the effective bounded runtime shape (version, stream count, delivery mode, poll
+and timeout); the configuration file is read within a 64 KiB limit. Per-stream
+transitions (active, standby, ownership conflict, failure) are logged once, and
+failures carry a simplified safe reason instead of a raw driver error. Repeated
+failures are summarized at a bounded cadence, recovery records the outage
+duration and failure count, and shutdown records each stream's final state and
+failure count. Messages never include DSNs, broker addresses, credentials, or
+row payloads.
 
 ## Container packaging
 
