@@ -124,7 +124,7 @@ only to verify its final log position and excludes them from its event oracle.
 
 Each stream has its own bounded producer and source loop inside the common
 process. A shared transactional producer would couple independently owned streams.
-Configured batch buffers total at most 32 MiB across at most 16 streams; this is
+Configured batch buffers total at most 64 MiB across at most 32 streams; this is
 not a total-process RAM limit.
 
 Replicas with identical multi-stream configurations contend for source locks.

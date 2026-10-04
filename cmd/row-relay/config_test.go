@@ -131,22 +131,22 @@ func TestCheckConfigSingleSourceSafeSummary(t *testing.T) {
 }
 
 func TestCheckConfigStreamBudget(t *testing.T) {
-	t.Run("overflow-32MiB-rejected", func(t *testing.T) {
+	t.Run("overflow-64MiB-rejected", func(t *testing.T) {
 		env := map[string]string{"KAFKA_BROKERS": "127.0.0.1:9092"}
-		path := multiStreamConfig(t, env, 13, 4<<20)
+		path := multiStreamConfig(t, env, 17, 4<<20)
 		code, _, stderr := runCLI(t, []string{"--check-config", "--config", path}, env)
-		if code != 2 || !strings.Contains(stderr, "32 MiB") {
+		if code != 2 || !strings.Contains(stderr, "64 MiB") {
 			t.Fatalf("exit=%d stderr=%q", code, stderr)
 		}
 	})
-	t.Run("within-32MiB-accepted", func(t *testing.T) {
+	t.Run("within-64MiB-accepted", func(t *testing.T) {
 		env := map[string]string{"KAFKA_BROKERS": "127.0.0.1:9092"}
-		path := multiStreamConfig(t, env, 13, 2<<20)
+		path := multiStreamConfig(t, env, 20, 2<<20)
 		code, stdout, stderr := runCLI(t, []string{"--check-config", "--config", path}, env)
 		if code != 0 {
 			t.Fatalf("exit=%d stderr=%q", code, stderr)
 		}
-		if !strings.Contains(stdout, "count=13") || !strings.Contains(stdout, "total_batch_bytes=27262976") {
+		if !strings.Contains(stdout, "count=20") || !strings.Contains(stdout, "total_batch_bytes=41943040") {
 			t.Fatalf("unexpected summary %q", stdout)
 		}
 	})
@@ -154,9 +154,9 @@ func TestCheckConfigStreamBudget(t *testing.T) {
 
 func TestCheckConfigRejectsTooManyStreams(t *testing.T) {
 	env := map[string]string{"KAFKA_BROKERS": "127.0.0.1:9092"}
-	path := multiStreamConfig(t, env, 17, 1<<20)
+	path := multiStreamConfig(t, env, 33, 1<<20)
 	code, _, stderr := runCLI(t, []string{"--check-config", "--config", path}, env)
-	if code != 2 || !strings.Contains(stderr, "1..16 streams") {
+	if code != 2 || !strings.Contains(stderr, "1..32 streams") {
 		t.Fatalf("exit=%d stderr=%q", code, stderr)
 	}
 }

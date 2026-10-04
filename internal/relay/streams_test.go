@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -65,6 +67,76 @@ func TestManagedInvalidationRequiresExplicitClosedProgressAndSchemaRoutes(t *tes
 	} {
 		if _, err = LoadStreams(strings.NewReader(input), base, lookup); err == nil {
 			t.Fatal("ambiguous invalidation contract accepted")
+		}
+	}
+}
+
+func TestStreamConfigBounds(t *testing.T) {
+	base := Config{Brokers: []string{"localhost:9092"}, Compression: "none", CDCFormat: "legacy-json",
+		Timeout: time.Second, Poll: time.Millisecond, Batch: 1000, BatchBytes: 2 << 20}
+	lookup := func(db string) (string, bool) { return "dsn-" + db, true }
+	config := func(count, batchBytes int) string {
+		streams := make([]string, 0, count)
+		for i := 0; i < count; i++ {
+			streams = append(streams, fmt.Sprintf(
+				`{"name":"s%d","database_env":"DB%d","topic":"cdc","cdc_format":"legacy-json","batch_bytes":%d}`, i, i, batchBytes))
+		}
+		return `{"streams":[` + strings.Join(streams, ",") + `]}`
+	}
+	for _, tc := range []struct {
+		name  string
+		input string
+		want  int
+	}{
+		{"20x2MiB", config(20, 2<<20), 20},
+		{"32x2MiB", config(32, 2<<20), 32},
+	} {
+		streams, err := LoadStreams(strings.NewReader(tc.input), base, lookup)
+		if err != nil || len(streams) != tc.want {
+			t.Fatalf("%s rejected: len=%d err=%v", tc.name, len(streams), err)
+		}
+	}
+	// 64 MiB + 1 byte: each route is within 1..64 MiB, the sum is not.
+	over := `{"streams":[{"name":"a","database_env":"DB","topic":"cdc","cdc_format":"legacy-json","batch_bytes":66060288},` +
+		`{"name":"b","database_env":"DB2","topic":"cdc","cdc_format":"legacy-json","batch_bytes":1048577}]}`
+	for _, input := range []string{config(0, 2<<20), config(33, 1<<20), over} {
+		if _, err := LoadStreams(strings.NewReader(input), base, lookup); err == nil {
+			t.Fatalf("out-of-range stream configuration accepted: %s", input)
+		}
+	}
+}
+
+func TestRunStreamsActivityBounds(t *testing.T) {
+	newStream := func(batchBytes int) Stream {
+		return Stream{Name: "s", Config: Config{DatabaseURL: "postgres://relay:pw@127.0.0.1:5432/db",
+			Brokers: []string{"localhost:9092"}, Compression: "none", Topic: "cdc", CDCFormat: "legacy-json",
+			Timeout: time.Second, Poll: time.Millisecond, Batch: 1000, BatchBytes: batchBytes}}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// A cancelled context never opens transport, so a missing bound guard fails
+	// the assertion instead of retrying until the test times out.
+	for _, count := range []int{20, 32} {
+		streams := make([]Stream, count)
+		for i := range streams {
+			streams[i] = newStream(2 << 20)
+		}
+		if err := RunStreamsActivity(ctx, streams, nil, nil); err != nil {
+			t.Fatalf("%d streams rejected: %v", count, err)
+		}
+	}
+	tooMany := make([]Stream, 33)
+	for i := range tooMany {
+		tooMany[i] = newStream(1 << 20)
+	}
+	tooLarge := make([]Stream, 32)
+	for i := range tooLarge {
+		tooLarge[i] = newStream(2 << 20)
+	}
+	tooLarge[31] = newStream((2 << 20) + 1)
+	for name, streams := range map[string][]Stream{"33 streams": tooMany, "over budget": tooLarge} {
+		if err := RunStreamsActivity(ctx, streams, nil, nil); err == nil {
+			t.Fatalf("%s accepted at runtime", name)
 		}
 	}
 }

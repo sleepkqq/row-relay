@@ -23,3 +23,4 @@ __pycache__/
 /benchmarks/pgboss/node_modules/
 /interop/jvm/target/
 /tasks/unified-outbox-prompt.md
+/.local-context.md

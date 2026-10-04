@@ -98,7 +98,7 @@ KAFKA_BROKERS=localhost:29092 ./bin/row-relay --config streams.json
 Configuration contains environment-variable references, not database secrets.
 Each stream has an independent source loop, deadline and capped reopen backoff.
 Optional `batch`/`batch_bytes` override the CLI defaults per stream. There are at
-most 16 configured streams and their batch-byte budgets sum to at most 32 MiB;
+most 32 configured streams and their batch-byte budgets sum to at most 64 MiB;
 each stream has its own fenced producer bounded by its assigned budget. These are buffering
 limits, not a promise about total RSS. Worker `active` logs are operational state,
 not caught-up/freshness certification. Shared Kafka TLS/SCRAM configuration and

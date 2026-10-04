@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+// Bounded multi-stream limits. Per-route byte budgets remain 1..64 MiB and the
+// encoded-record contract is unchanged.
+const (
+	maxStreams             = 32
+	maxAggregateBatchBytes = 64 << 20
+)
+
 type Stream struct {
 	Name   string
 	Config Config
@@ -45,8 +52,8 @@ func LoadStreams(reader io.Reader, base Config, lookup func(string) (string, boo
 	if err = decoder.Decode(&file); err != nil || decoder.Decode(new(any)) != io.EOF {
 		return nil, errors.New("invalid stream configuration")
 	}
-	if len(file.Streams) == 0 || len(file.Streams) > 16 {
-		return nil, errors.New("configuration requires 1..16 streams")
+	if len(file.Streams) == 0 || len(file.Streams) > maxStreams {
+		return nil, fmt.Errorf("configuration requires 1..%d streams", maxStreams)
 	}
 	namePattern := regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
 	seen, sources := map[string]bool{}, map[string]bool{}
@@ -100,8 +107,8 @@ func LoadStreams(reader io.Reader, base Config, lookup func(string) (string, boo
 		totalBytes += c.BatchBytes
 		streams = append(streams, Stream{Name: source.Name, Config: c})
 	}
-	if totalBytes > 32<<20 {
-		return nil, fmt.Errorf("stream batch byte budgets total %d MiB (%d bytes); maximum is 32 MiB", totalBytes>>20, totalBytes)
+	if totalBytes > maxAggregateBatchBytes {
+		return nil, fmt.Errorf("stream batch byte budgets total %d MiB (%d bytes); maximum is %d MiB", totalBytes>>20, totalBytes, maxAggregateBatchBytes>>20)
 	}
 	return streams, nil
 }
@@ -120,7 +127,7 @@ func RunStreams(ctx context.Context, streams []Stream, report func(string, error
 // signal only; it is never a freshness proof and a stream never advances its
 // source because of it.
 func RunStreamsActivity(ctx context.Context, streams []Stream, report func(string, error), activity func(string)) error {
-	if len(streams) == 0 || len(streams) > 16 {
+	if len(streams) == 0 || len(streams) > maxStreams {
 		return errors.New("invalid stream count")
 	}
 	producerConfig := streams[0].Config
@@ -137,7 +144,7 @@ func RunStreamsActivity(ctx context.Context, streams []Stream, report func(strin
 		producerConfig.Batch += c.Batch
 		producerConfig.BatchBytes += c.BatchBytes
 	}
-	if producerConfig.BatchBytes > 32<<20 {
+	if producerConfig.BatchBytes > maxAggregateBatchBytes {
 		return errors.New("aggregate stream buffer budget exceeded")
 	}
 	var workers sync.WaitGroup

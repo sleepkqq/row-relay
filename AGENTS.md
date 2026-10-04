@@ -33,3 +33,5 @@ make a benchmark pass. See `local/README.md` for integration and resource checks
   an explicit request. Preserve unrelated work.
 - Update contracts and task status with implementation. Do not mark a planned
   feature implemented because its documentation or placeholder exists.
+
+Before changing or publishing this repository, read `.local-context.md` when present; it is private local context and must never be staged.

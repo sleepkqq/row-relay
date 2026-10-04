@@ -39,13 +39,13 @@ credentials, or row data.
 
 ## Stream limits
 
-A multi-stream configuration holds 1..16 streams, and the sum of their
-`batch_bytes` budgets must not exceed 32 MiB. Each route's `batch_bytes` is
-1..64 MiB and defaults to 4 MiB, so eight default routes already reach the
-32 MiB aggregate bound. Within the stream cap, more streams require a smaller
-per-route `batch_bytes`: 13 streams at `--batch-bytes 2097152` (2 MiB each) sum
-to 26 MiB and are accepted, while 19 streams exceed the 16-stream cap and, at
-that size, would also sum to 38 MiB, so they must be split across process
+A multi-stream configuration holds 1..32 streams, and the sum of their
+`batch_bytes` budgets must not exceed 64 MiB. Each route's `batch_bytes` is
+1..64 MiB and defaults to 4 MiB, so sixteen default routes already reach the
+64 MiB aggregate bound. Within the stream cap, more streams require a smaller
+per-route `batch_bytes`: 20 streams at `--batch-bytes 2097152` (2 MiB each) sum
+to 40 MiB and are accepted, while 33 streams exceed the 32-stream cap and, at
+that size, would also sum to 66 MiB, so they must be split across process
 configurations. The bounds are intentional and are not raised in place.
 
 ## Kafka transport
